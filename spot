@@ -1,0 +1,147 @@
+#!/usr/bin/env bash
+
+set -e
+
+# Checks for dependencies
+deps () {
+  for dep; do
+    if ! command -v "$dep" &> /dev/null ; then
+      echo "Program $dep not found, please install it first" >&2
+      exit 1
+    fi
+  done
+}
+
+deps "curl" "jq" "spt"
+
+while getopts "ad:lns:" opt; do
+  case $opt in
+    a)
+      get_art=1 ;;
+    l)
+      get_lyrics=1 ;;
+    n)
+      send_notif=1 ;;
+    *)
+      exit 1
+      ;;
+  esac
+done
+shift $((OPTIND - 1))
+
+enc="$(echo -n "$(pass show Media/spt \
+  | gsed -z 's/\n/:/')" \
+  | openssl base64 \
+  | tr -d '\n')"
+
+token=$(curl -sX "POST" -H "Authorization: Basic $enc" \
+  -d grant_type=client_credentials https://accounts.spotify.com/api/token \
+  | jq -r '.access_token')
+
+config_file="${XDG_CONFIG_HOME:-$HOME/.config}/spot/config.yml"
+
+if [[ "$(yq -r '.genius.token' "$config_file")" != "null" ]]; then
+  GENIUS_ACCESS_TOKEN="$(yq -r '.genius.token' "$config_file")"
+elif [[ "$(yq -r '.genius.command' "$config_file")" != "null" ]]; then
+  GENIUS_ACCESS_TOKEN=$(eval "$(yq -r '.genius.command' "$config_file")" | tail -n1)
+fi
+
+export GENIUS_ACCESS_TOKEN
+
+# Checks if a song is playing in spotify-tui
+if [[ "$(spt playback --status 2>&1)" =~ .*▶.* ]]; then
+  playing=1
+else
+  playing=0
+fi
+
+# First uses any provided search, then uses now playing as fallback
+if [[ -n "$*" ]]; then
+  trackid=$(curl -sX "GET" \
+    "https://api.spotify.com/v1/search?q=${*// /%20}&type=track&limit=1&offset=0" \
+    -H "Accept: application/json" -H "Content-Type: application/json" -H \
+    "Authorization: Bearer $token" \
+    | jq -r '.tracks.items[] .id')
+
+elif [[ "$playing" -eq 1 ]]; then
+  trackid=$(spt playback --share-track \
+    | sed 's/https:\/\/open.spotify.com\/track\///')
+
+else
+      echo "No song detected, please enter a search query" >&2
+      exit 1
+fi
+
+# Gets track info and thumbnail from the song
+if [[ -n "$*" ]] || [[ "$playing" -eq 1 ]]; then
+  trackinfo=$(curl -sX "GET" \
+    "https://api.spotify.com/v1/tracks/$trackid?market=ES" -H "Accept: \
+    application/json" -H "Content-Type: application/json" -H "Authorization: \
+    Bearer $token")
+
+  image="$(curl -s "https://open.spotify.com/oembed?url=spotify:track:$trackid" \
+    | jq -r '.thumbnail_url')"
+fi
+
+# Saves albumart
+albumart () {
+  art="$(echo "$trackinfo" \
+    | jq -r 'first(.album.images[] .url)')"
+
+  albumtitle="$(echo "$trackinfo" \
+    | jq -r '.album.name')"
+
+  curl -so "$albumtitle.png" "$art"
+}
+
+# Outputs lyrics
+lyrics () {
+  deps "lyricsgenius"
+
+  if [[ -n "$GENIUS_ACCESS_TOKEN" ]]; then
+    fullname="$(echo "$trackinfo" \
+      | jq -r '[.name, .artists[] .name] | @sh' \
+      | tr -d "'")"
+
+    temp="$(mktemp -d)"
+    cd "$temp"
+
+    lyricsgenius -q --save song "$fullname"
+    
+    if [[ "$(yq -r '.pager' "$config_file")" == "null" ]]; then
+      user_pager="$PAGER"
+    else
+      user_pager=$(yq -r '.pager' "$config_file")
+    fi
+
+    jq '.lyrics' lyrics*.json \
+      | gsed -r '1s/^"//; $s/"$//; $s/[0-9]*Embed$//; s/\\n/\n/g; 1s/(.*Lyrics)(.*)/\1\n\n\2/' \
+      | $user_pager
+
+    rm -r "$temp"
+
+  else
+    echo "Please export your Genius Access Token as \$GENIUS_ACCESS_TOKEN." >&2
+    exit 1
+  fi
+}
+
+notify () {
+  terminal-notifier \
+    -title "$(echo "$trackinfo" | jq -r '.name')" \
+    -contentImage "$image" \
+    -open "$(echo "$trackinfo" | jq -r '.album.external_urls.spotify')" \
+    -message "$(echo "$trackinfo" | jq -r '.artists[] .name')"
+}
+
+if [[ "$send_notif" -eq 1 ]]; then
+  notify "$*"
+fi
+
+if [[ "$get_art" -eq 1 ]]; then
+  albumart "$*"
+fi
+
+if [[ "$get_lyrics" -eq 1 ]]; then
+  lyrics "$*"
+fi
