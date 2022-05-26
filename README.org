@@ -1,0 +1,57 @@
+#+title: Spot
+#+author: Shreeram Modi
+
+* About
+
+=spot= is a command line utility that provides various functions for music. It
+defaults to the currently playing song on Spotify but accepts search queries as
+well.
+
+* Installation
+
+TODO
+
+* Configuration
+
+=spot= searches for a configuration file first at
+=$XDG_CONFIG_HOME/spot/config.yml= then at =~/.config/spot/config.yml=
+
+** Genius Access Token
+
+Mandatory. A Genius client access token that gives access to the Genius API, can
+be generated on your [[https://genius.com/api-clients][dashboard]]. You can
+define either the token directly or a shell command that =spot= should run to
+get the token. =spot= first checks for the token and then falls back to running
+the shell command. E.g.:
+
+#+begin_src yaml
+genius:
+  token: "<Genius token here>"
+  command: "pass show Genius"
+#+end_src
+
+** Pager
+
+Optional. The program =spot= should use to display lyrics. Falls back to your
+environment's =$PAGER= if not defined. E.g.:
+
+#+begin_src yaml
+pager: "nvim +Man!"
+#+end_src
+
+* Usage
+
+#+begin_src bash
+spot [-a] [-l] [-n] [<query>]
+#+end_src
+
+Flags can be combined and the search query is optional. If there's no search
+query =spot= defaults to the currently playing song.
+
+=-a=: Saves the album cover art to the current directory.
+
+=-l=: Gets lyrics from [[https://genius.com][Genius]] and outputs them to
+either the pager specified in the configuration file or =$PAGER=.
+
+=-n=: Sends a notification with the now-playing song using
+[[https://github.com/julienXX/terminal-notifier][terminal-notifier]].
