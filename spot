@@ -2,6 +2,12 @@
 
 set -e
 
+VERSION="0.2.0"
+
+version () {
+  echo "spot version $VERSION"
+}
+
 # Checks for dependencies
 deps () {
   for dep; do
@@ -14,7 +20,7 @@ deps () {
 
 deps "curl" "jq" "spt"
 
-while getopts "ad:lns:" opt; do
+while getopts "alnv" opt; do
   case $opt in
     a)
       get_art=1 ;;
@@ -22,6 +28,8 @@ while getopts "ad:lns:" opt; do
       get_lyrics=1 ;;
     n)
       send_notif=1 ;;
+    v)
+      version "$*" ;;
     *)
       exit 1
       ;;
