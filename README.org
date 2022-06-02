@@ -9,7 +9,11 @@ well.
 
 * Installation
 
-TODO
+Spot can be installed using [[https://brew.sh/][Homebrew]].
+
+#+begin_src bash
+brew install shrimpram/tap/spot
+#+end_src
 
 * Configuration
 
