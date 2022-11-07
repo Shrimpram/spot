@@ -2,7 +2,7 @@
 
 set -e
 
-VERSION="0.2.0"
+VERSION="0.2.1"
 
 version () {
   echo "spot version $VERSION"
@@ -94,7 +94,7 @@ fi
 # Saves albumart
 albumart () {
   art="$(echo "$trackinfo" \
-    | jq -r 'first(.album.images[] .url)')"
+    | jq -r 'last(.album.images[] .url)')"
 
   albumtitle="$(echo "$trackinfo" \
     | jq -r '.album.name')"
